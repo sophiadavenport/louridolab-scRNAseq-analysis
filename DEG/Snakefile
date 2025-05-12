@@ -1,0 +1,58 @@
+use_conda = True
+ADATA_PATH=config["adata_path"]
+
+cell_types = ['NK_Cell', 'B_Cells', 'Monocyte_SPMs', 'Other_T_Cell', 'Cd4_T_Cell', 'Cd8_T_Cell', 'DCs', 'Neutrophils', 'RBCs','Platelets', 'LMPs']
+
+rule all:
+    input:
+        expand("results/Blood_{celltype}_edger_results_5_2.csv", celltype=cell_types), expand("results/PE_{celltype}_edger_results_5_2.csv", celltype=cell_types) 
+
+rule split_celltypes:
+    input:
+        adata=ADATA_PATH
+    output:
+        PE_celltype_counts=expand("intermediate/PE_{celltype}_counts.csv", celltype=cell_types),
+        PE_celltype_metadata=expand("intermediate/PE_{celltype}_metadata.csv", celltype=cell_types),
+        Blood_celltype_counts=expand("intermediate/Blood_{celltype}_counts.csv", celltype=cell_types),
+        Blood_celltype_metadata=expand("intermediate/Blood_{celltype}_metadata.csv", celltype=cell_types)
+    params:
+        cell_type_column="Major"
+    conda:
+        "envs/scanpy.yaml"
+    shell:
+        """
+        python split_celltype.py --adata {input.adata} --cell_type_column {params.cell_type_column}
+        """
+
+rule PE_run_edger:
+    input:
+        counts="intermediate/PE_{celltype}_counts.csv",
+        metadata="intermediate/PE_{celltype}_metadata.csv"
+    output:
+        "results/PE_{celltype}_edger_results_5_2.csv"
+    threads: 4
+    params:
+        condition="Strains", #later update this to add a covariate column and test with covariates
+        covariates_cols=["",""]
+    conda:
+        "envs/edger.yaml"
+    shell:
+        """
+        Rscript run_edgeR.R {input.counts} {input.metadata} {params.condition} {params.} {output}
+        """
+
+rule Blood_run_edger:
+    input:
+        counts="intermediate/Blood_{celltype}_counts.csv",
+        metadata="intermediate/Blood_{celltype}_metadata.csv"
+    output:
+        "results/Blood_{celltype}_edger_results_5_2.csv"
+    threads: 4
+    params:
+        condition="Strains" #later update this to add a covariate column and test with covariates
+    conda:
+        "envs/edger.yaml"
+    shell:
+        """
+        Rscript run_edgeR.R {input.counts} {input.metadata} {params.condition} {output}
+        """
