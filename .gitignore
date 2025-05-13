@@ -1,0 +1,6 @@
+# Ignore all log files
+*.log
+# Files
+DEG/results/
+DEG/snakemake/
+DEG/config.yaml
