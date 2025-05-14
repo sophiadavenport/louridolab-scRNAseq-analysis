@@ -20,7 +20,7 @@ tissue_dict = {tissue: adata[adata.obs["Tissue"] == tissue] for tissue in tissue
 
 for tissue, tissue_adata in tissue_dict.items():
     for cell_type in tissue_adata.obs[args.cell_type_column].unique():
-        subset = tissue_adata[tissue_adata.obs[args.cell_type_column] == cell_type]
+        subset = tissue_adata[tissue_adata.obs[args.cell_type_column] == cell_type].copy()
         subset.X=subset.layers['counts']
         
         counts_df = pd.DataFrame(

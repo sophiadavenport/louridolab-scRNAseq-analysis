@@ -1,11 +1,12 @@
 use_conda = True
 ADATA_PATH=config["adata_path"]
+DATA_DIR=config["data_dir"]
 
-cell_types = ['NK_Cell', 'B_Cells', 'Monocyte_SPMs', 'Other_T_Cell', 'Cd4_T_Cell', 'Cd8_T_Cell', 'DCs', 'Neutrophils', 'RBCs','Platelets', 'LMPs']
+cell_types = ['NK_Cell', 'B_Cells', 'Monocyte_SPMs', 'Other_T_Cell', 'Cd4_T_Cell', 'Cd8_T_Cell', 'DCs', 'Neutrophils'] #,'Platelets', 'LMPs', 'RBCs'
 
 rule all:
     input:
-        expand("results/Blood_{celltype}_edger_results_5_2.csv", celltype=cell_types), expand("results/PE_{celltype}_edger_results_5_2.csv", celltype=cell_types) 
+        expand("results/parsing/Blood_{celltype}_heatmap_5_13.png", celltype=cell_types), expand("results/parsing/PE_{celltype}_heatmap_5_13.png", celltype=cell_types) 
 
 rule split_celltypes:
     input:
@@ -29,16 +30,15 @@ rule PE_run_edger:
         counts="intermediate/PE_{celltype}_counts.csv",
         metadata="intermediate/PE_{celltype}_metadata.csv"
     output:
-        "results/PE_{celltype}_edger_results_5_2.csv"
+        "results/PE_{celltype}_edger_results_5_13.csv"
     threads: 4
     params:
-        condition="Strains", #later update this to add a covariate column and test with covariates
-        covariates_cols=["",""]
+        condition="Strains"
     conda:
         "envs/edger.yaml"
     shell:
         """
-        Rscript run_edgeR.R {input.counts} {input.metadata} {params.condition} {params.} {output}
+        Rscript run_edgeR.R {input.counts} {input.metadata} {params.condition} {output}
         """
 
 rule Blood_run_edger:
@@ -46,13 +46,39 @@ rule Blood_run_edger:
         counts="intermediate/Blood_{celltype}_counts.csv",
         metadata="intermediate/Blood_{celltype}_metadata.csv"
     output:
-        "results/Blood_{celltype}_edger_results_5_2.csv"
+        "results/Blood_{celltype}_edger_results_5_13.csv"
     threads: 4
     params:
-        condition="Strains" #later update this to add a covariate column and test with covariates
+        condition="Strains"
     conda:
         "envs/edger.yaml"
     shell:
         """
         Rscript run_edgeR.R {input.counts} {input.metadata} {params.condition} {output}
+        """
+
+rule PE_parse_DEG_results:
+    input:
+        DEG_csvs="results/PE_{celltype}_edger_results_5_13.csv"
+    output:
+        heatmap="results/parsing/PE_{celltype}_heatmap_5_13.png"
+    threads: 4
+    conda:
+        "envs/scanpy.yaml"
+    shell:
+        """
+        python visualizing_DEG_results.py --input {input.DEG_csvs} --output {output.heatmap}
+        """
+
+rule Blood_parse_DEG_results:
+    input:
+        DEG_csvs="results/Blood_{celltype}_edger_results_5_13.csv"
+    output:
+        heatmap="results/parsing/Blood_{celltype}_heatmap_5_13.png"
+    threads: 4
+    conda:
+        "envs/scanpy.yaml"
+    shell:
+        """
+        python visualizing_DEG_results.py --input {input.DEG_csvs} --output {output.heatmap}
         """

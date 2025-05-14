@@ -6,32 +6,76 @@ args <- commandArgs(trailingOnly = TRUE)
 counts_file <- args[1]
 metadata_file <- args[2]
 condition_col <- args[3]
-covariates_cols <- args[4]
-output_file <- args[5]
+output_file <- args[4]
 
 counts <- read.csv(counts_file, row.names = 1, check.names = FALSE)
 print(max(counts))
 metadata <- read.csv(metadata_file, row.names = 1)
-metadata[[condition_col]] <- gsub(" ", ".", metadata[[condition_col]]) #trying to fix the " " issue
+metadata[[condition_col]] <- gsub(" ", ".", metadata[[condition_col]])
 
 group <- as.factor(metadata[[condition_col]])
 
 print(levels(group))
 print(table(group))
 
+#assuming column 'replicates'...
+replicate_covariates <- metadata %>%
+  group_by(replicate) %>%
+  summarise(
+    num_cells = n(),
+    avg_mt = mean(percent.mt, na.rm = TRUE),
+    avg_features = mean(nFeature_RNA, na.rm = TRUE)
+  )
+
+print(replicate_covariates)
+
+metadata <- metadata %>%
+  left_join(replicate_covariates, by = "replicate")
+
 dge <- DGEList(counts = counts, group = group)
 dge <- dge[filterByExpr(dge), , keep.lib.sizes = FALSE]
 
-dge <- calcNormFactors(dge)
+dge <- calcNormFactors(dge) 
 
-design <- model.matrix(~0 + group)
-colnames(design) <- levels(group)
-dge <- estimateDisp(dge, design)
-fit <- glmQLFit(dge, design)
+initial_covariates <- c("Mouse", "avg_features", "avg_mt")
+covariates <- initial_covariates
+removed_covariates <- c()
+design_success <- FALSE
+
+while (!design_success && length(covariates) >= 0) {
+  formula_str <- paste("~ 0 + group", if (length(covariates) > 0) paste("+", paste(covariates, collapse = " + ")) else "")
+  message("Trying design matrix with formula: ", formula_str)
+
+  design <- model.matrix(as.formula(formula_str), data = metadata)
+  colnames(design)[seq_along(levels(group))] <- levels(group)
+
+  fit_try <- try({
+    dge <- estimateDisp(dge, design)
+    glmQLFit(dge, design)
+  }, silent = TRUE)
+
+  if (inherits(fit_try, "try-error")) {
+    message("Model fitting failed with covariates: ", paste(covariates, collapse = ", "))
+    if (length(covariates) == 0) {
+      stop("All covariates removed and model still not estimable. Aborting.")
+    }
+    removed_covariate <- tail(covariates, 1)
+    removed_covariates <- c(removed_covariates, removed_covariate)
+    covariates <- head(covariates, -1)
+    message("Removed covariate: ", removed_covariate)
+  } else {
+    fit <- fit_try
+    design_success <- TRUE
+    message("Model fitting succeeded with covariates: ", paste(covariates, collapse = ", "))
+  }
+}
+
+if (length(removed_covariates) > 0) {
+  message("Final model excludes these covariates due to rank deficiency: ", paste(removed_covariates, collapse = ", "))
+}
 
 group_levels <- levels(group)
 pairwise_comparisons <- combn(group_levels, 2, simplify = FALSE)
-
 all_results <- list()
 
 for (pair in pairwise_comparisons) {
@@ -46,60 +90,3 @@ for (pair in pairwise_comparisons) {
 
 final_results <- bind_rows(all_results)
 write.csv(final_results, output_file, row.names = TRUE)
-
-# run_edgeR <- function(count_dataframe, group_vector, contrast_levels = NULL, use_qlf = TRUE) {
-#   library(limma)
-#   library(edgeR)
-
-#   group_factor <- factor(group_vector)
-#   if (length(group_factor) != ncol(count_dataframe)) {
-#     stop("Length of group vector doesn't match the number of barcodes/cells (columns) in counts dataframe.")
-#   }
-
-#   dge <- DGEList(counts = count_dataframe, group = group_factor)
-#   keep <- filterByExpr(dge, group = group_factor) #Filter lowly expressed genes
-#   dge <- dge[keep, , keep.lib.sizes = FALSE]
-#   dge <- calcNormFactors(dge)
-
-#   if (nlevels(group_factor) == 2 && is.null(contrast_levels)) {
-#     dge <- estimateDisp(dge)
-#     result <- exactTest(dge)
-#     return(topTags(result, n = Inf)$table)
-#   }
-
-#   design <- model.matrix(~0 + group_factor)
-#   colnames(design) <- levels(group_factor)
-#   dge <- estimateDisp(dge, design)
-#   fit <- if (use_qlf) {
-#     glmQLFit(dge, design)
-#   } else {
-#     glmFit(dge, design)
-#   }
-
-#   if (!is.null(contrast_levels)) {
-#     if (length(contrast_levels) != 2) {
-#       stop("contrast_levels must be a vector of two group names, e.g., c('treated', 'control')")
-#     }
-#     contrast <- makeContrasts(contrasts = paste0(contrast_levels[1], " - ", contrast_levels[2]),
-#                               levels = design)
-    
-#     result <- if (use_qlf) {
-#       glmQLFTest(fit, contrast = contrast)
-#     } else {
-#       glmLRT(fit, contrast = contrast)
-#     }
-    
-#     return(topTags(result, n = Inf)$table)
-#   } else {
-#     result <- if (use_qlf) {
-#       glmQLFTest(fit)
-#     } else {
-#       glmLRT(fit)
-#     }
-    
-#     return(topTags(result, n = Inf)$table)
-#   }
-# }
-
-# results <- run_edgeR(counts, group)
-# write.csv(results, output_file)
