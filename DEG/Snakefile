@@ -1,12 +1,12 @@
 use_conda = True
 ADATA_PATH=config["adata_path"]
 DATA_DIR=config["data_dir"]
-
-cell_types = ['NK_Cell', 'B_Cells', 'Monocyte_SPMs', 'Other_T_Cell', 'Cd4_T_Cell', 'Cd8_T_Cell', 'DCs', 'Neutrophils'] #,'Platelets', 'LMPs', 'RBCs'
+cell_types=config["cell_types"]
+tissues=config["tissues"]
 
 rule all:
     input:
-        expand("results/parsing/Blood_{celltype}_heatmap_5_13.png", celltype=cell_types), expand("results/parsing/PE_{celltype}_heatmap_5_13.png", celltype=cell_types) 
+        expand("results/parsing/Blood_{celltype}_heatmap_5_13.png", celltype=cell_types), expand("results/parsing/PE_{celltype}_heatmap_5_13.png", celltype=cell_types), expand("results/{tissue}_DEG_dotplot_5_14.png", tissue=tissues), expand("results/{tissue}_DEG_summary_5_14.txt", tissue=tissues)
 
 rule split_celltypes:
     input:
@@ -81,4 +81,20 @@ rule Blood_parse_DEG_results:
     shell:
         """
         python visualizing_DEG_results.py --input {input.DEG_csvs} --output {output.heatmap}
+        """
+
+def get_deg_inputs(wildcards):
+    return [f"results/{wildcards.tissue}_{ct}_edger_results_5_13.csv" for ct in cell_types]
+
+rule tissue_summary_DEG_results:
+    input:
+        DEG_csvs=get_deg_inputs
+    output:
+        dotplots="results/{tissue}_DEG_dotplot_5_14.png", reports="results/{tissue}_DEG_summary_5_14.txt"
+    threads: 2
+    conda:
+        "envs/scanpy.yaml"
+    shell:
+        """
+        python summarize_DEG_results.py --input {input.DEG_csvs} --output_dot {output.dotplots} --output_report {output.reports}
         """
