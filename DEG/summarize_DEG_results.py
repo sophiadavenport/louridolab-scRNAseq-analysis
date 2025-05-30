@@ -43,6 +43,13 @@ merged_df = merged_df.sort_index()
 
 tissue = re.search(r'/([^/_]+)_DEG_dotplot', args.output_dot).group(1)
 
+#Reorder columns: put all "vs Uninfected" comparisons last
+all_columns = merged_df.columns.tolist()
+uninfected = [col for col in all_columns if col.endswith('vs Uninfected')]
+others = [col for col in all_columns if not col.endswith('vs Uninfected')]
+ordered_columns = others + uninfected
+merged_df = merged_df[ordered_columns] #Apply the new column order
+
 fig, ax = plt.subplots(figsize=(10.5, 8))
 max_val = 356
 #Flatten the DataFrame for plotting
