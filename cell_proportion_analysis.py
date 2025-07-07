@@ -44,7 +44,7 @@ def scanpro_tissue_majorcelltype(adata, tissue_name):
     plt.savefig(f'{tissue_name}_proportioncelltypes_barplot.png')
     plt.close()
 
-    return out 
+    return out
 
 results = {}
 for tissue in ['PE', 'Blood']:
